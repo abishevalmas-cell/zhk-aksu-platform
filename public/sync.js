@@ -4,6 +4,30 @@
 (function() {
   'use strict';
 
+  // ── Intercept setTimeout to delay app init until data is loaded ──
+  // App scripts use setTimeout(initFn, 300-800) to initialize.
+  // We queue those until server data is in localStorage.
+  const _origSetTimeout = window.setTimeout.bind(window);
+  const _origClearTimeout = window.clearTimeout.bind(window);
+  const _queuedInits = [];
+  let _dataLoaded = false;
+
+  window.setTimeout = function(fn, delay) {
+    if (!_dataLoaded && typeof fn === 'function' && delay >= 200) {
+      _queuedInits.push(fn);
+      return -1;
+    }
+    return _origSetTimeout(fn, delay);
+  };
+
+  function releaseQueuedInits() {
+    _dataLoaded = true;
+    window.setTimeout = _origSetTimeout;
+    _queuedInits.forEach(function(fn) { _origSetTimeout(fn, 0); });
+    _queuedInits.length = 0;
+  }
+
+  // ── Config ──
   const SYNC_KEYS = [
     'zhk-apartments', 'zhk-meters', 'zhk-payments',
     'zhk-employees', 'zhk-salary', 'zhk-expenses',
@@ -23,8 +47,8 @@
 
     pendingWrites[key] = value;
 
-    if (syncTimer) clearTimeout(syncTimer);
-    syncTimer = setTimeout(flushToServer, 800);
+    if (syncTimer) _origClearTimeout(syncTimer);
+    syncTimer = _origSetTimeout(flushToServer, 800);
   }
 
   async function flushToServer() {
@@ -81,7 +105,7 @@
       el.style.color = '#059669';
       el.textContent = '☁ Сохранено';
       el.style.opacity = '1';
-      setTimeout(() => { el.style.opacity = '0'; }, 2000);
+      _origSetTimeout(function() { el.style.opacity = '0'; }, 2000);
     } else if (status === 'loading') {
       el.style.background = '#eff6ff';
       el.style.color = '#2563eb';
@@ -92,7 +116,7 @@
       el.style.color = '#dc2626';
       el.textContent = '⚠ Ошибка синхронизации';
       el.style.opacity = '1';
-      setTimeout(() => { el.style.opacity = '0'; }, 5000);
+      _origSetTimeout(function() { el.style.opacity = '0'; }, 5000);
     }
   }
 
@@ -104,33 +128,22 @@
       const res = await fetch('/api/data');
       const data = await res.json();
 
-      let hadNewData = false;
       for (const [key, value] of Object.entries(data)) {
         if (value !== null && value !== undefined) {
           const strValue = typeof value === 'string' ? value : JSON.stringify(value);
-          const existing = localStorage.getItem(key);
-          if (existing !== strValue) {
-            hadNewData = true;
-          }
           originalSetItem(key, strValue);
         }
       }
 
       initialized = true;
       showSyncStatus('saved');
-
-      // If server had data that wasn't in localStorage (new device),
-      // reload once so the app scripts pick it up
-      if (hadNewData && !sessionStorage.getItem('zhk-initial-sync')) {
-        sessionStorage.setItem('zhk-initial-sync', '1');
-        window.location.reload();
-        return;
-      }
     } catch (err) {
       console.error('Failed to load from server:', err);
       showSyncStatus('error');
-      // App will use whatever is in localStorage (empty for new users)
     }
+
+    // Release queued app init functions now that data is in localStorage
+    releaseQueuedInits();
   }
 
   // Poll for changes from other users every 30 seconds
@@ -166,7 +179,7 @@
       const nav = sidebar.querySelector('nav');
       if (!nav) return;
 
-      // Online indicator  
+      // Online indicator
       const onlineDiv = document.createElement('div');
       onlineDiv.id = 'online-indicator';
       onlineDiv.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 20px;font-size:11px;color:#94a3b8;';
@@ -202,13 +215,21 @@
     if (root) obs.observe(root, { childList: true, subtree: true });
   }
 
+  // Safety: if fetch takes too long (5s), release inits anyway
+  _origSetTimeout(function() {
+    if (!_dataLoaded) {
+      console.warn('Sync timeout, releasing app init');
+      releaseQueuedInits();
+    }
+  }, 5000);
+
   // Initialize
   window.__zhkSyncReady = loadFromServer().then(() => {
     startPolling();
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', addSidebarExtras);
     } else {
-      setTimeout(addSidebarExtras, 1000);
+      _origSetTimeout(addSidebarExtras, 1000);
     }
   });
 })();

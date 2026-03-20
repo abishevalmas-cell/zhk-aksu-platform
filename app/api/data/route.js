@@ -38,7 +38,7 @@ export async function GET(request) {
     'zhk-apartments', 'zhk-meters', 'zhk-payments',
     'zhk-employees', 'zhk-salary', 'zhk-expenses',
     'zhk-requests', 'zhk-common-meters', 'zhk-common-meter-defs',
-    'zhk-global-tariffs', 'zhk-kaspi-phone'
+    'zhk-global-tariffs', 'zhk-kaspi-phone', 'zhk-utility-bills'
   ];
 
   const data = {};

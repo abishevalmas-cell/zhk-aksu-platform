@@ -30,7 +30,7 @@
     'zhk-apartments', 'zhk-meters', 'zhk-payments',
     'zhk-employees', 'zhk-salary', 'zhk-expenses',
     'zhk-requests', 'zhk-common-meters', 'zhk-common-meter-defs',
-    'zhk-global-tariffs', 'zhk-kaspi-phone'
+    'zhk-global-tariffs', 'zhk-kaspi-phone', 'zhk-utility-bills'
   ];
 
   var GREEN_API_KEYS = ['greenapi-id', 'greenapi-token'];

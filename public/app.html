@@ -229,6 +229,45 @@ button,select,input{min-height:36px}
 /* CHARTS */
 .chart-wrap{margin:16px 0;background:#fff;border-radius:12px;padding:12px;border:1px solid #e2e8f0}
 .chart-wrap canvas{width:100%!important;max-height:200px}
+.charts-row{display:grid;grid-template-columns:1.5fr 1fr;gap:12px;margin-bottom:16px}
+.chart-title{font-size:12px;font-weight:700;color:#475569;margin-bottom:8px}
+
+/* SECTION HEADERS */
+.bal-section{font-size:13px;font-weight:800;color:#0f172a;margin:20px 0 10px;padding-bottom:6px;border-bottom:2px solid #e2e8f0;display:flex;align-items:center;gap:6px}
+.bal-section:first-child{margin-top:0}
+
+/* DEBT TABLE */
+.debt-row{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:8px;font-size:13px}
+.debt-row:nth-child(odd){background:#f8fafc}
+.debt-row .apt-name{font-weight:600;color:#0f172a}
+.debt-row .debt-val{font-weight:700}
+
+/* DISTRIBUTION MODAL */
+#dist-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;justify-content:center;align-items:flex-start;padding:20px;overflow-y:auto}
+#dist-overlay.active{display:flex}
+#dist-modal{background:#fff;border-radius:16px;width:100%;max-width:700px;max-height:90vh;overflow-y:auto;margin-top:30px;box-shadow:0 20px 60px rgba(0,0,0,0.3)}
+.dist-form{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px;align-items:end}
+.dist-form label{display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px}
+.dist-form select,.dist-form input{width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box}
+.dist-form select:focus,.dist-form input:focus{border-color:#3b82f6}
+.dist-btn{padding:10px 20px;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s}
+.dist-btn-primary{background:#1e40af;color:#fff}
+.dist-btn-primary:hover{background:#1d4ed8}
+.dist-btn-save{background:#059669;color:#fff}
+.dist-btn-save:hover{background:#047857}
+.dist-result{margin-top:16px}
+.dist-table{width:100%;border-collapse:collapse;font-size:13px}
+.dist-table th{text-align:left;padding:8px 10px;background:#f1f5f9;font-weight:700;color:#475569;font-size:11px;text-transform:uppercase}
+.dist-table td{padding:8px 10px;border-bottom:1px solid #f1f5f9}
+.dist-table tr:hover{background:#f8fafc}
+.dist-table .total-row td{font-weight:800;border-top:2px solid #e2e8f0;background:#f8fafc}
+.dist-info{padding:12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;font-size:12px;color:#1e40af;margin-bottom:16px;line-height:1.6}
+.dist-saved-list{margin-top:16px}
+.dist-saved-item{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;margin-bottom:6px;font-size:13px}
+.dist-saved-item .dist-type{font-weight:700;color:#0f172a}
+.dist-saved-item .dist-amount{font-weight:700;color:#1e40af}
+.dist-del{background:none;border:none;color:#dc2626;cursor:pointer;font-size:16px;padding:2px 6px;border-radius:6px}
+.dist-del:hover{background:#fef2f2}
 
 /* NAV */
 .mega-nav-btn{width:100%;display:flex;align-items:center;gap:12px;padding:10px 20px;font-size:14px;font-weight:500;transition:all .15s;text-align:left;border:none;cursor:pointer;background:transparent;color:#94a3b8;font-family:inherit}
@@ -236,8 +275,12 @@ button,select,input{min-height:36px}
 
 @media(max-width:768px){
   #balance-modal{max-width:95vw;margin-top:60px}
+  #dist-modal{max-width:95vw;margin-top:60px}
   .bal-grid{grid-template-columns:1fr 1fr}
   .bal-table{font-size:11px;display:block;overflow-x:auto}
+  .dist-form{grid-template-columns:1fr 1fr}
+  .dist-table{font-size:11px;display:block;overflow-x:auto}
+  .charts-row{grid-template-columns:1fr}
 }
 </style>
 
@@ -1054,9 +1097,9 @@ function showBalance(){
   var sb=document.querySelector('.fixed.left-0.top-0.h-full.w-56');
   var ss=sb?sb.querySelectorAll('.border-t.border-slate-800 select'):[];
   var year=ss.length>1?parseInt(ss[1].value):new Date().getFullYear();
-  document.getElementById('bal-title').textContent='💰 Баланс ЖК — '+year;
+  document.getElementById('bal-title').textContent='💰 Дашборд ЖК АКСУ — '+year;
   var body=document.getElementById('bal-body');
-  var monthData=[];var totalIncome=0,totalExpense=0,totalSalary=0;
+  var monthData=[];var totalIncome=0,totalExpense=0,totalSalary=0,totalCharged=0;
   for(var m=1;m<=12;m++){
     var income=payments.filter(function(p){return p.year===year&&p.month===m}).reduce(function(s,p){return s+p.amount},0);
     var exp=expenses.filter(function(e){return e.year===year&&e.month===m}).reduce(function(s,e){return s+e.amount},0);
@@ -1066,18 +1109,31 @@ function showBalance(){
       var meter=meters.find(function(mt){return mt.apartmentId===apt.id&&mt.month===m&&mt.year===year});
       charged+=calcCharges(apt,meter).total;
     });
-    totalIncome+=income;totalExpense+=exp;totalSalary+=sal;
+    totalIncome+=income;totalExpense+=exp;totalSalary+=sal;totalCharged+=charged;
     if(income||exp||sal||charged)monthData.push({month:m,charged:charged,income:income,expense:exp,salary:sal});
   }
+  var totalDebt=totalCharged-totalIncome;
   var netBalance=totalIncome-totalExpense-totalSalary;
-  var h='<div class="bal-grid">';
+  var collectionRate=totalCharged>0?Math.round(totalIncome/totalCharged*100):0;
+
+  // --- KPI CARDS (6) ---
+  var h='<div class="bal-grid" style="grid-template-columns:1fr 1fr 1fr">';
+  h+='<div class="bal-card" style="background:#eff6ff"><div class="val" style="color:#1e40af">'+fmt(totalCharged)+'</div><div class="lbl">Начислено (тг)</div></div>';
   h+='<div class="bal-card" style="background:#ecfdf5"><div class="val bal-positive">'+fmt(totalIncome)+'</div><div class="lbl">Получено (тг)</div></div>';
+  h+='<div class="bal-card" style="background:'+(totalDebt>0?'#fef2f2':'#ecfdf5')+'"><div class="val '+(totalDebt>0?'bal-negative':'bal-positive')+'">'+fmt(Math.abs(totalDebt))+'</div><div class="lbl">'+(totalDebt>0?'Задолженность':'Переплата')+'</div></div>';
   h+='<div class="bal-card" style="background:#fef2f2"><div class="val bal-negative">'+fmt(totalExpense+totalSalary)+'</div><div class="lbl">Расходы + ЗП</div></div>';
-  h+='<div class="bal-card" style="background:'+(netBalance>=0?'#ecfdf5':'#fef2f2')+'"><div class="val '+(netBalance>=0?'bal-positive':'bal-negative')+'">'+fmt(netBalance)+'</div><div class="lbl">Баланс</div></div>';
+  h+='<div class="bal-card" style="background:'+(netBalance>=0?'#ecfdf5':'#fef2f2')+'"><div class="val '+(netBalance>=0?'bal-positive':'bal-negative')+'">'+fmt(netBalance)+'</div><div class="lbl">Чистый баланс</div></div>';
+  h+='<div class="bal-card" style="background:'+(collectionRate>=80?'#ecfdf5':'#fffbeb')+'"><div class="val" style="color:'+(collectionRate>=80?'#059669':'#d97706')+'">'+collectionRate+'%</div><div class="lbl">Собираемость</div></div>';
   h+='</div>';
-  // Chart
-  h+='<div class="chart-wrap"><canvas id="bal-chart"></canvas></div>';
-  // Table
+
+  // --- CHARTS ---
+  h+='<div class="charts-row">';
+  h+='<div class="chart-wrap"><div class="chart-title">Начислено vs Получено по месяцам</div><canvas id="bal-chart"></canvas></div>';
+  h+='<div class="chart-wrap"><div class="chart-title">Собираемость</div><canvas id="bal-pie"></canvas></div>';
+  h+='</div>';
+
+  // --- MONTHLY TABLE ---
+  h+='<div class="bal-section">📊 Помесячная сводка</div>';
   h+='<table class="bal-table"><thead><tr><th>Месяц</th><th style="text-align:right">Начислено</th><th style="text-align:right">Получено</th><th style="text-align:right">Расходы</th><th style="text-align:right">Баланс</th></tr></thead><tbody>';
   var running=0;
   monthData.forEach(function(d){
@@ -1085,15 +1141,49 @@ function showBalance(){
     h+='<tr><td>'+MONTHS[d.month-1]+'</td><td style="text-align:right">'+fmt(d.charged)+'</td><td style="text-align:right;color:#059669">'+fmt(d.income)+'</td><td style="text-align:right;color:#dc2626">'+fmt(d.expense+d.salary)+'</td><td style="text-align:right;font-weight:700;color:'+(running>=0?'#059669':'#dc2626')+'">'+fmt(running)+'</td></tr>';
   });
   h+='</tbody></table>';
+
+  // --- PER-APARTMENT DEBT ---
+  h+='<div class="bal-section">🏠 Задолженность по квартирам</div>';
+  var aptDebts=[];
+  apts.forEach(function(apt){
+    var aptCharged=0,aptPaid=0;
+    for(var m=1;m<=12;m++){
+      var meter=meters.find(function(mt){return mt.apartmentId===apt.id&&mt.month===m&&mt.year===year});
+      aptCharged+=calcCharges(apt,meter).total;
+      aptPaid+=payments.filter(function(p){return p.apartmentId===apt.id&&p.year===year&&p.month===m}).reduce(function(s,p){return s+p.amount},0);
+    }
+    var diff=aptCharged-aptPaid;
+    aptDebts.push({number:apt.number,owner:apt.owner,charged:aptCharged,paid:aptPaid,diff:diff});
+  });
+  aptDebts.sort(function(a,b){return b.diff-a.diff});
+  aptDebts.forEach(function(d){
+    var color=d.diff>0?'#dc2626':d.diff<0?'#059669':'#94a3b8';
+    var label=d.diff>0?'долг: '+fmt(d.diff):d.diff<0?'переплата: '+fmt(Math.abs(d.diff)):'оплачено';
+    h+='<div class="debt-row"><div><span class="apt-name">'+d.number+'</span> <span style="color:#94a3b8;font-size:12px">'+d.owner+'</span></div><div class="debt-val" style="color:'+color+'">'+label+'</div></div>';
+  });
+
   body.innerHTML=h;
-  // Draw chart
+
+  // --- DRAW CHARTS ---
   if(window.Chart&&monthData.length){
-    var ctx=document.getElementById('bal-chart');
-    new Chart(ctx,{type:'bar',data:{
+    // Destroy existing charts if any
+    Chart.helpers.each(Chart.instances,function(instance){instance.destroy()});
+    // Bar chart
+    new Chart(document.getElementById('bal-chart'),{type:'bar',data:{
       labels:monthData.map(function(d){return MONTHS[d.month-1].substring(0,3)}),
-      datasets:[{label:'Получено',data:monthData.map(function(d){return d.income}),backgroundColor:'#34d399'},
-                {label:'Расходы',data:monthData.map(function(d){return d.expense+d.salary}),backgroundColor:'#f87171'}]
+      datasets:[
+        {label:'Начислено',data:monthData.map(function(d){return d.charged}),backgroundColor:'#93c5fd'},
+        {label:'Получено',data:monthData.map(function(d){return d.income}),backgroundColor:'#34d399'},
+        {label:'Расходы',data:monthData.map(function(d){return d.expense+d.salary}),backgroundColor:'#f87171'}
+      ]
     },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11}}}},scales:{y:{ticks:{callback:function(v){return(v/1000)+'k'}}}}}});
+    // Pie chart
+    var paid=aptDebts.filter(function(d){return d.diff<=0}).length;
+    var unpaid=aptDebts.filter(function(d){return d.diff>0}).length;
+    new Chart(document.getElementById('bal-pie'),{type:'doughnut',data:{
+      labels:['Оплатили ('+paid+')','Должники ('+unpaid+')'],
+      datasets:[{data:[paid,unpaid],backgroundColor:['#34d399','#f87171'],borderWidth:0}]
+    },options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{position:'bottom',labels:{font:{size:11}}}}}});
   }
   document.getElementById('balance-overlay').classList.add('active');
 }
@@ -1258,6 +1348,146 @@ function patchHistory(){
 }
 
 // ==============================
+// 6. РАСПРЕДЕЛЕНИЕ ОБЩИХ СЧЕТОВ
+// ==============================
+function createDistributionModal(){
+  if(document.getElementById('dist-overlay'))return;
+  var o=document.createElement('div');o.id='dist-overlay';
+  o.innerHTML='<div id="dist-modal"><div class="bal-header"><h3 id="dist-title">⚡ Распределение общих счетов</h3><button class="ga-close" id="dist-close">&times;</button></div><div class="bal-body" id="dist-body"></div></div>';
+  document.body.appendChild(o);
+  o.addEventListener('click',function(e){if(e.target===o)o.classList.remove('active')});
+  document.getElementById('dist-close').addEventListener('click',function(){o.classList.remove('active')});
+}
+
+function showDistribution(){
+  var body=document.getElementById('dist-body');
+  var sb=document.querySelector('.fixed.left-0.top-0.h-full.w-56');
+  var ss=sb?sb.querySelectorAll('.border-t.border-slate-800 select'):[];
+  var curMonth=ss.length>0?parseInt(ss[0].value):new Date().getMonth()+1;
+  var curYear=ss.length>1?parseInt(ss[1].value):new Date().getFullYear();
+
+  var h='<div class="dist-info">Введите общую сумму счёта за электричество или газ. Система распределит её по квартирам пропорционально потреблению (электричество) или площади (газ).</div>';
+  // Form
+  h+='<div class="dist-form">';
+  h+='<div><label>Тип</label><select id="dist-type"><option value="electricity">Электричество</option><option value="gas">Газ</option></select></div>';
+  h+='<div><label>Месяц</label><select id="dist-month">';
+  for(var i=1;i<=12;i++){h+='<option value="'+i+'"'+(i===curMonth?' selected':'')+'>'+MONTHS[i-1]+'</option>'}
+  h+='</select></div>';
+  h+='<div><label>Год</label><select id="dist-year">';
+  for(var y=2025;y<=2027;y++){h+='<option value="'+y+'"'+(y===curYear?' selected':'')+'>'+y+'</option>'}
+  h+='</select></div>';
+  h+='<div><label>Сумма счёта (тг)</label><input id="dist-amount" type="number" placeholder="600000" /></div>';
+  h+='</div>';
+  h+='<button class="dist-btn dist-btn-primary" id="dist-calc">📊 Рассчитать распределение</button>';
+  h+='<div id="dist-result"></div>';
+
+  // Saved distributions
+  var saved=getData('zhk-utility-bills');
+  if(saved.length){
+    h+='<div class="bal-section" style="margin-top:24px">📋 Сохранённые распределения</div>';
+    h+='<div class="dist-saved-list">';
+    saved.forEach(function(bill){
+      var typeLabel=bill.type==='electricity'?'⚡ Электричество':'🔥 Газ';
+      h+='<div class="dist-saved-item"><div><span class="dist-type">'+typeLabel+'</span> — '+MONTHS[bill.month-1]+' '+bill.year+'</div><div style="display:flex;align-items:center;gap:8px"><span class="dist-amount">'+fmt(bill.totalAmount)+' тг</span><button class="dist-del" data-id="'+bill.id+'" title="Удалить">✕</button></div></div>';
+    });
+    h+='</div>';
+  }
+
+  body.innerHTML=h;
+
+  document.getElementById('dist-calc').addEventListener('click',function(){calculateDistribution()});
+
+  // Delete handlers
+  body.querySelectorAll('.dist-del').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var id=btn.dataset.id;
+      var bills=getData('zhk-utility-bills').filter(function(b){return b.id!==id});
+      localStorage.setItem('zhk-utility-bills',JSON.stringify(bills));
+      showDistribution();
+    });
+  });
+
+  document.getElementById('dist-overlay').classList.add('active');
+}
+
+function calculateDistribution(){
+  var type=document.getElementById('dist-type').value;
+  var month=parseInt(document.getElementById('dist-month').value);
+  var year=parseInt(document.getElementById('dist-year').value);
+  var amount=parseFloat(document.getElementById('dist-amount').value);
+  if(!amount||amount<=0){alert('Введите сумму счёта');return}
+
+  var apts=getData('zhk-apartments');
+  var meters=getData('zhk-meters');
+  var distribution=[];
+  var totalConsumption=0;
+
+  if(type==='electricity'){
+    // Distribute by electricity consumption
+    apts.forEach(function(apt){
+      var meter=meters.find(function(m){return m.apartmentId===apt.id&&m.month===month&&m.year===year});
+      var consumption=(meter?(meter.electricity||0)+(meter.electricityStorage||0)+(meter.autoCharge||0):0);
+      distribution.push({apartmentId:apt.id,number:apt.number,owner:apt.owner,consumption:consumption,unit:'кВт'});
+      totalConsumption+=consumption;
+    });
+  } else {
+    // Distribute by area (gas)
+    apts.forEach(function(apt){
+      var area=apt.area||0;
+      distribution.push({apartmentId:apt.id,number:apt.number,owner:apt.owner,consumption:area,unit:'м²'});
+      totalConsumption+=area;
+    });
+  }
+
+  // Calculate shares
+  distribution.forEach(function(d){
+    d.share=totalConsumption>0?d.consumption/totalConsumption:0;
+    d.amount=Math.round(amount*d.share);
+  });
+
+  // Sort by amount descending
+  distribution.sort(function(a,b){return b.amount-a.amount});
+
+  // Render result
+  var resultDiv=document.getElementById('dist-result');
+  var typeLabel=type==='electricity'?'электричество':'газ';
+  var h='<div class="bal-section" style="margin-top:16px">📊 Распределение: '+fmt(amount)+' тг за '+typeLabel+' ('+MONTHS[month-1]+' '+year+')</div>';
+  if(totalConsumption===0){
+    h+='<div class="dist-info" style="background:#fef2f2;border-color:#fecaca;color:#dc2626">Нет данных по потреблению за этот месяц. Убедитесь, что показания счётчиков внесены.</div>';
+    resultDiv.innerHTML=h;return;
+  }
+  h+='<table class="dist-table"><thead><tr><th>Квартира</th><th>Владелец</th><th style="text-align:right">Потребление</th><th style="text-align:right">Доля</th><th style="text-align:right">Сумма (тг)</th></tr></thead><tbody>';
+  var checkSum=0;
+  distribution.forEach(function(d){
+    checkSum+=d.amount;
+    h+='<tr><td><b>'+d.number+'</b></td><td>'+d.owner+'</td><td style="text-align:right">'+fmt(d.consumption)+' '+d.unit+'</td><td style="text-align:right">'+(d.share*100).toFixed(1)+'%</td><td style="text-align:right;font-weight:700">'+fmt(d.amount)+'</td></tr>';
+  });
+  // Rounding adjustment to last item
+  var diff=amount-checkSum;
+  if(diff!==0&&distribution.length>0)distribution[0].amount+=diff;
+  h+='<tr class="total-row"><td colspan="4"><b>ИТОГО</b></td><td style="text-align:right;font-weight:800">'+fmt(amount)+'</td></tr>';
+  h+='</tbody></table>';
+  h+='<div style="margin-top:12px;display:flex;gap:8px">';
+  h+='<button class="dist-btn dist-btn-save" id="dist-save">💾 Сохранить распределение</button>';
+  h+='</div>';
+  resultDiv.innerHTML=h;
+
+  document.getElementById('dist-save').addEventListener('click',function(){
+    var bills=getData('zhk-utility-bills');
+    // Remove existing for same type/month/year
+    bills=bills.filter(function(b){return!(b.type===type&&b.month===month&&b.year===year)});
+    bills.push({
+      id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+      type:type,month:month,year:year,totalAmount:amount,
+      distribution:distribution.map(function(d){return{apartmentId:d.apartmentId,share:d.share,amount:d.amount}})
+    });
+    localStorage.setItem('zhk-utility-bills',JSON.stringify(bills));
+    alert('✓ Распределение сохранено!');
+    showDistribution();
+  });
+}
+
+// ==============================
 // NAV BUTTONS
 // ==============================
 function injectNavButtons(){
@@ -1271,6 +1501,11 @@ function injectNavButtons(){
   balBtn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg> Баланс ЖК';
   balBtn.addEventListener('click',function(){showBalance();closeMobileSidebar()});
 
+  // Distribution button
+  var distBtn=document.createElement('button');distBtn.id='dist-nav';distBtn.className='mega-nav-btn';
+  distBtn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 00-1.172-2.828L3 3"/><path d="m15 9 6-6"/></svg> Распределение';
+  distBtn.addEventListener('click',function(){showDistribution();closeMobileSidebar()});
+
   // Kaspi QR button
   var kaspiBtn=document.createElement('button');kaspiBtn.id='kaspi-nav';kaspiBtn.className='mega-nav-btn';
   kaspiBtn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3z"/><path d="M20 14v3h-3"/><path d="M14 20h3"/><path d="M20 20h0"/></svg> Kaspi QR';
@@ -1278,8 +1513,8 @@ function injectNavButtons(){
   if(kaspiConfigured){var dot=document.createElement('span');dot.style.cssText='width:8px;height:8px;border-radius:50%;background:#22c55e;margin-left:auto';kaspiBtn.appendChild(dot)}
   kaspiBtn.addEventListener('click',function(){openKaspiSettings();closeMobileSidebar()});
 
-  if(gaNav){gaNav.parentElement.insertBefore(balBtn,gaNav);gaNav.parentElement.insertBefore(kaspiBtn,gaNav.nextSibling)}
-  else{var exp=document.getElementById('data-transfer-btns');if(exp){sb.insertBefore(balBtn,exp);sb.insertBefore(kaspiBtn,exp)}}
+  if(gaNav){gaNav.parentElement.insertBefore(balBtn,gaNav);gaNav.parentElement.insertBefore(distBtn,gaNav);gaNav.parentElement.insertBefore(kaspiBtn,gaNav.nextSibling)}
+  else{var exp=document.getElementById('data-transfer-btns');if(exp){sb.insertBefore(balBtn,exp);sb.insertBefore(distBtn,exp);sb.insertBefore(kaspiBtn,exp)}}
 }
 
 function closeMobileSidebar(){
@@ -1295,6 +1530,7 @@ function closeMobileSidebar(){
 // ==============================
 function initMega(){
   createBalanceModal();
+  createDistributionModal();
   createKaspiSettings();
   injectQR();
   patchHistory();

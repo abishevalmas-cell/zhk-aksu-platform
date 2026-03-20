@@ -1,0 +1,20 @@
+import { NextResponse } from 'next/server';
+
+export async function POST(request) {
+  const { password } = await request.json();
+  const correctPassword = process.env.APP_PASSWORD || 'aksu2024';
+
+  if (password === correctPassword) {
+    const response = NextResponse.json({ success: true });
+    response.cookies.set('zhk-auth', password, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+      path: '/',
+    });
+    return response;
+  }
+
+  return NextResponse.json({ error: 'Wrong password' }, { status: 401 });
+}

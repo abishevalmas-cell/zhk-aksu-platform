@@ -104,15 +104,28 @@
       const res = await fetch('/api/data');
       const data = await res.json();
 
+      let hadNewData = false;
       for (const [key, value] of Object.entries(data)) {
         if (value !== null && value !== undefined) {
           const strValue = typeof value === 'string' ? value : JSON.stringify(value);
+          const existing = localStorage.getItem(key);
+          if (existing !== strValue) {
+            hadNewData = true;
+          }
           originalSetItem(key, strValue);
         }
       }
 
       initialized = true;
       showSyncStatus('saved');
+
+      // If server had data that wasn't in localStorage (new device),
+      // reload once so the app scripts pick it up
+      if (hadNewData && !sessionStorage.getItem('zhk-initial-sync')) {
+        sessionStorage.setItem('zhk-initial-sync', '1');
+        window.location.reload();
+        return;
+      }
     } catch (err) {
       console.error('Failed to load from server:', err);
       showSyncStatus('error');

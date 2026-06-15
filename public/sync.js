@@ -1,6 +1,20 @@
 // Storage sync layer: bridges localStorage with server API
 // Loaded BEFORE the main app to intercept all localStorage calls
 
+// ── STEP 0: Gas billing per month helper ──
+// 'zhk-gas-off-months' stores an array of month numbers (1-12) for which gas
+// is NOT billed (non-heating season). Empty/missing => gas billed every month.
+// Defined here (before the app bundle) so charge calculators can call it.
+window.gasOffMonth = function(month) {
+  if (month === null || month === undefined || month === '') return false;
+  try {
+    var arr = JSON.parse(localStorage.getItem('zhk-gas-off-months') || '[]');
+    return Array.isArray(arr) && arr.indexOf(Number(month)) !== -1;
+  } catch (e) {
+    return false;
+  }
+};
+
 // ── STEP 1: Synchronous load — blocks page until data is in localStorage ──
 (function() {
   try {
@@ -30,7 +44,8 @@
     'zhk-apartments', 'zhk-meters', 'zhk-payments',
     'zhk-employees', 'zhk-salary', 'zhk-expenses',
     'zhk-requests', 'zhk-common-meters', 'zhk-common-meter-defs',
-    'zhk-global-tariffs', 'zhk-kaspi-phone', 'zhk-utility-bills'
+    'zhk-global-tariffs', 'zhk-kaspi-phone', 'zhk-utility-bills',
+    'zhk-gas-off-months'
   ];
 
   var GREEN_API_KEYS = ['greenapi-id', 'greenapi-token'];
@@ -134,6 +149,14 @@
       importBtn.onmouseout = function() { importBtn.style.color = '#94a3b8'; importBtn.style.background = 'transparent'; };
       importBtn.onclick = function() { window.location.href = '/import'; };
 
+      var gasBtn = document.createElement('button');
+      gasBtn.id = 'gas-months-btn';
+      gasBtn.style.cssText = 'width:100%;display:flex;align-items:center;gap:12px;padding:10px 20px;font-size:14px;font-weight:500;color:#94a3b8;background:transparent;border:none;cursor:pointer;font-family:inherit;text-align:left;';
+      gasBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 2.5z"/></svg> Газ по месяцам';
+      gasBtn.onmouseover = function() { gasBtn.style.color = '#fff'; gasBtn.style.background = '#1e293b'; };
+      gasBtn.onmouseout = function() { gasBtn.style.color = '#94a3b8'; gasBtn.style.background = 'transparent'; };
+      gasBtn.onclick = openGasMonthsModal;
+
       var logoutBtn = document.createElement('button');
       logoutBtn.id = 'logout-btn';
       logoutBtn.style.cssText = 'width:100%;display:flex;align-items:center;gap:12px;padding:10px 20px;font-size:14px;font-weight:500;color:#94a3b8;background:transparent;border:none;cursor:pointer;font-family:inherit;text-align:left;';
@@ -147,12 +170,74 @@
 
       nav.appendChild(onlineDiv);
       nav.appendChild(importBtn);
+      nav.appendChild(gasBtn);
       nav.appendChild(logoutBtn);
     });
 
     var root = document.getElementById('root');
     if (root) obs.observe(root, { childList: true, subtree: true });
   }
+
+  // Modal to choose months when gas is NOT billed (non-heating season)
+  function openGasMonthsModal() {
+    if (document.getElementById('gas-months-overlay')) return;
+    var MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+      'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+    var off = [];
+    try { off = JSON.parse(localStorage.getItem('zhk-gas-off-months') || '[]') || []; } catch (e) { off = []; }
+
+    var overlay = document.createElement('div');
+    overlay.id = 'gas-months-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;padding:16px;';
+
+    var box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:16px;max-width:440px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);';
+
+    var monthsHtml = '';
+    for (var i = 1; i <= 12; i++) {
+      var on = off.indexOf(i) === -1;
+      monthsHtml += '<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid #e2e8f0;border-radius:10px;cursor:pointer;font-size:14px;color:#334155;background:' + (on ? '#fff' : '#fef2f2') + '">' +
+        '<input type="checkbox" class="gas-month-cb" data-m="' + i + '"' + (on ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer">' +
+        '<span>' + MONTHS[i - 1] + '</span></label>';
+    }
+
+    box.innerHTML =
+      '<div style="padding:20px 22px;border-bottom:1px solid #f1f5f9">' +
+        '<div style="font-size:17px;font-weight:700;color:#0f172a">Начисление за газ по месяцам</div>' +
+        '<div style="font-size:13px;color:#64748b;margin-top:6px;line-height:1.5">Снимите галочку с месяцев, когда газ <b>не начисляется</b> (неотопительный сезон). За эти месяцы газ не попадёт в квитанцию. Настройка сохраняется на сервере и не сбрасывается при обновлении данных.</div>' +
+      '</div>' +
+      '<div style="padding:16px 22px;display:grid;grid-template-columns:1fr 1fr;gap:8px">' + monthsHtml + '</div>' +
+      '<div style="padding:14px 22px 20px;display:flex;gap:10px;justify-content:flex-end">' +
+        '<button id="gas-months-cancel" style="padding:9px 16px;border-radius:10px;border:1px solid #e2e8f0;background:#fff;color:#475569;font-size:14px;font-weight:600;cursor:pointer">Отмена</button>' +
+        '<button id="gas-months-save" style="padding:9px 16px;border-radius:10px;border:none;background:#0f172a;color:#fff;font-size:14px;font-weight:600;cursor:pointer">Сохранить</button>' +
+      '</div>';
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    function close() { overlay.remove(); }
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
+    document.getElementById('gas-months-cancel').onclick = close;
+    document.getElementById('gas-months-save').onclick = function() {
+      var newOff = [];
+      var cbs = box.querySelectorAll('.gas-month-cb');
+      for (var j = 0; j < cbs.length; j++) {
+        if (!cbs[j].checked) newOff.push(parseInt(cbs[j].getAttribute('data-m'), 10));
+      }
+      newOff.sort(function(a, b) { return a - b; });
+      var saveBtn = document.getElementById('gas-months-save');
+      saveBtn.textContent = 'Сохранение...';
+      saveBtn.disabled = true;
+      localStorage.setItem('zhk-gas-off-months', JSON.stringify(newOff));
+      // Push directly so the server has it before we reload the page
+      fetch('/api/data', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: { 'zhk-gas-off-months': newOff } }),
+      }).catch(function() {}).then(function() { window.location.reload(); });
+    };
+  }
+  window.openGasMonthsModal = openGasMonthsModal;
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() { setTimeout(addSidebarExtras, 1000); });

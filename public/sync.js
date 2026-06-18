@@ -15,6 +15,26 @@ window.gasOffMonth = function(month) {
   }
 };
 
+// 'zhk-odn-periods' stores per-period ОДН: { "<year>-<month>": { total, per, n } }.
+// 'per' is the per-apartment ОДН for that period (total split equally between the
+// apartments that normally pay ОДН). If a period has an entry, every paying
+// apartment (base tariff odn > 0) uses 'per'; apartments with base odn 0 stay 0.
+// Without an entry for the period, the apartment's own tariff odn is used (as before).
+window.odnForApt = function(baseOdn, month, year) {
+  baseOdn = Number(baseOdn) || 0;
+  if (month === null || month === undefined || year === null || year === undefined) return baseOdn;
+  try {
+    var map = JSON.parse(localStorage.getItem('zhk-odn-periods') || '{}');
+    var v = map ? map[year + '-' + month] : null;
+    if (v === null || v === undefined) return baseOdn;
+    var per = (typeof v === 'object') ? v.per : v;
+    if (per === null || per === undefined || per === '') return baseOdn;
+    return baseOdn > 0 ? Number(per) : 0;
+  } catch (e) {
+    return baseOdn;
+  }
+};
+
 // ── STEP 1: Synchronous load — blocks page until data is in localStorage ──
 (function() {
   try {
@@ -45,7 +65,7 @@ window.gasOffMonth = function(month) {
     'zhk-employees', 'zhk-salary', 'zhk-expenses',
     'zhk-requests', 'zhk-common-meters', 'zhk-common-meter-defs',
     'zhk-global-tariffs', 'zhk-kaspi-phone', 'zhk-utility-bills',
-    'zhk-gas-off-months'
+    'zhk-gas-off-months', 'zhk-odn-periods'
   ];
 
   var GREEN_API_KEYS = ['greenapi-id', 'greenapi-token'];
@@ -157,6 +177,14 @@ window.gasOffMonth = function(month) {
       gasBtn.onmouseout = function() { gasBtn.style.color = '#94a3b8'; gasBtn.style.background = 'transparent'; };
       gasBtn.onclick = openGasMonthsModal;
 
+      var odnBtn = document.createElement('button');
+      odnBtn.id = 'odn-periods-btn';
+      odnBtn.style.cssText = 'width:100%;display:flex;align-items:center;gap:12px;padding:10px 20px;font-size:14px;font-weight:500;color:#94a3b8;background:transparent;border:none;cursor:pointer;font-family:inherit;text-align:left;';
+      odnBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg> ОДН по периодам';
+      odnBtn.onmouseover = function() { odnBtn.style.color = '#fff'; odnBtn.style.background = '#1e293b'; };
+      odnBtn.onmouseout = function() { odnBtn.style.color = '#94a3b8'; odnBtn.style.background = 'transparent'; };
+      odnBtn.onclick = openOdnPeriodsModal;
+
       var logoutBtn = document.createElement('button');
       logoutBtn.id = 'logout-btn';
       logoutBtn.style.cssText = 'width:100%;display:flex;align-items:center;gap:12px;padding:10px 20px;font-size:14px;font-weight:500;color:#94a3b8;background:transparent;border:none;cursor:pointer;font-family:inherit;text-align:left;';
@@ -171,6 +199,7 @@ window.gasOffMonth = function(month) {
       nav.appendChild(onlineDiv);
       nav.appendChild(importBtn);
       nav.appendChild(gasBtn);
+      nav.appendChild(odnBtn);
       nav.appendChild(logoutBtn);
     });
 
@@ -238,6 +267,126 @@ window.gasOffMonth = function(month) {
     };
   }
   window.openGasMonthsModal = openGasMonthsModal;
+
+  // Modal to set ОДН per period: one total per month, split equally between
+  // the apartments that pay ОДН. Stored per period, independent of other months.
+  function openOdnPeriodsModal() {
+    if (document.getElementById('odn-periods-overlay')) return;
+    var MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+      'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+
+    function loadMap() {
+      try { return JSON.parse(localStorage.getItem('zhk-odn-periods') || '{}') || {}; } catch (e) { return {}; }
+    }
+    function payingCount() {
+      try {
+        var apts = JSON.parse(localStorage.getItem('zhk-apartments') || '[]') || [];
+        return apts.filter(function(a) { return a && a.tariffs && Number(a.tariffs.odn) > 0; }).length;
+      } catch (e) { return 0; }
+    }
+
+    var now = new Date();
+    var curM = now.getMonth() + 1, curY = now.getFullYear();
+    var n = payingCount();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'odn-periods-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;padding:16px;';
+
+    var box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:16px;max-width:460px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);';
+
+    var monthOpts = '';
+    for (var i = 1; i <= 12; i++) monthOpts += '<option value="' + i + '"' + (i === curM ? ' selected' : '') + '>' + MONTHS[i - 1] + '</option>';
+
+    box.innerHTML =
+      '<div style="padding:20px 22px;border-bottom:1px solid #f1f5f9">' +
+        '<div style="font-size:17px;font-weight:700;color:#0f172a">ОДН по периодам</div>' +
+        '<div style="font-size:13px;color:#64748b;margin-top:6px;line-height:1.5">Введите общую сумму ОДН (общедомовые) за месяц — она разделится поровну между квартирами, которые платят ОДН. Сумма сохраняется отдельно для каждого периода и не сбрасывается при обновлении данных. Если поле пустое и сохранено — для этого месяца берётся обычный тариф квартиры.</div>' +
+      '</div>' +
+      '<div style="padding:18px 22px;display:flex;flex-direction:column;gap:14px">' +
+        '<div style="display:flex;gap:10px">' +
+          '<div style="flex:1"><label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">Месяц</label>' +
+            '<select id="odn-month" style="width:100%;padding:9px 10px;border:1px solid #e2e8f0;border-radius:10px;font-size:14px;background:#fff">' + monthOpts + '</select></div>' +
+          '<div style="width:110px"><label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">Год</label>' +
+            '<input id="odn-year" type="number" value="' + curY + '" style="width:100%;padding:9px 10px;border:1px solid #e2e8f0;border-radius:10px;font-size:14px"></div>' +
+        '</div>' +
+        '<div><label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">Общая сумма ОДН за месяц (тг)</label>' +
+          '<input id="odn-total" type="number" placeholder="например, 426300" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:15px"></div>' +
+        '<div id="odn-calc" style="font-size:13px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;line-height:1.6"></div>' +
+      '</div>' +
+      '<div style="padding:6px 22px 20px;display:flex;gap:10px;justify-content:flex-end">' +
+        '<button id="odn-clear" style="padding:9px 16px;border-radius:10px;border:1px solid #fecaca;background:#fff;color:#dc2626;font-size:14px;font-weight:600;cursor:pointer">Сбросить период</button>' +
+        '<button id="odn-cancel" style="padding:9px 16px;border-radius:10px;border:1px solid #e2e8f0;background:#fff;color:#475569;font-size:14px;font-weight:600;cursor:pointer">Отмена</button>' +
+        '<button id="odn-save" style="padding:9px 16px;border-radius:10px;border:none;background:#0f172a;color:#fff;font-size:14px;font-weight:600;cursor:pointer">Сохранить</button>' +
+      '</div>';
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    var mSel = document.getElementById('odn-month');
+    var ySel = document.getElementById('odn-year');
+    var totalInp = document.getElementById('odn-total');
+    var calcEl = document.getElementById('odn-calc');
+
+    function curKey() { return ySel.value + '-' + mSel.value; }
+    function fmt(x) { return Number(x).toLocaleString('ru-RU'); }
+
+    function refresh() {
+      var t = parseFloat(totalInp.value);
+      if (!n) {
+        calcEl.innerHTML = '<span style="color:#dc2626">Нет квартир с включённым ОДН — распределять не на кого.</span>';
+        return;
+      }
+      if (!t || t <= 0) {
+        calcEl.innerHTML = 'Платят ОДН: <b>' + n + '</b> квартир. Введите общую сумму, чтобы увидеть расчёт на квартиру.';
+        return;
+      }
+      var per = Math.round(t / n);
+      calcEl.innerHTML = 'Платят ОДН: <b>' + n + '</b> квартир.<br>На каждую квартиру: <b>' + fmt(per) + ' тг</b> (' + fmt(t) + ' ÷ ' + n + ').';
+    }
+
+    function loadPeriod() {
+      var v = loadMap()[curKey()];
+      if (v && typeof v === 'object') totalInp.value = (v.total != null ? v.total : '');
+      else if (v != null && v !== '') totalInp.value = (Number(v) * (n || 1)); // legacy: stored per-apartment
+      else totalInp.value = '';
+      refresh();
+    }
+
+    mSel.onchange = loadPeriod;
+    ySel.onchange = loadPeriod;
+    totalInp.oninput = refresh;
+    loadPeriod();
+
+    function close() { overlay.remove(); }
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
+    document.getElementById('odn-cancel').onclick = close;
+
+    function persist(map, btn) {
+      localStorage.setItem('zhk-odn-periods', JSON.stringify(map));
+      btn.textContent = '...'; btn.disabled = true;
+      fetch('/api/data', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: { 'zhk-odn-periods': map } }),
+      }).catch(function() {}).then(function() { window.location.reload(); });
+    }
+
+    document.getElementById('odn-save').onclick = function() {
+      var t = parseFloat(totalInp.value);
+      var map = loadMap();
+      if (!t || t <= 0) { delete map[curKey()]; }
+      else { map[curKey()] = { total: t, per: (n ? Math.round(t / n) : 0), n: n }; }
+      persist(map, this);
+    };
+    document.getElementById('odn-clear').onclick = function() {
+      var map = loadMap();
+      delete map[curKey()];
+      persist(map, this);
+    };
+  }
+  window.openOdnPeriodsModal = openOdnPeriodsModal;
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() { setTimeout(addSidebarExtras, 1000); });

@@ -185,6 +185,21 @@ window.odnForApt = function(baseOdn, month, year) {
       odnBtn.onmouseout = function() { odnBtn.style.color = '#94a3b8'; odnBtn.style.background = 'transparent'; };
       odnBtn.onclick = openOdnPeriodsModal;
 
+      var xlsBtn = document.createElement('button');
+      xlsBtn.id = 'export-xlsx-btn';
+      xlsBtn.style.cssText = 'width:100%;display:flex;align-items:center;gap:12px;padding:10px 20px;font-size:14px;font-weight:500;color:#94a3b8;background:transparent;border:none;cursor:pointer;font-family:inherit;text-align:left;';
+      xlsBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13l4 5M12 13l-4 5"/></svg> Выгрузить в Excel';
+      xlsBtn.onmouseover = function() { xlsBtn.style.color = '#fff'; xlsBtn.style.background = '#1e293b'; };
+      xlsBtn.onmouseout = function() { xlsBtn.style.color = '#94a3b8'; xlsBtn.style.background = 'transparent'; };
+      xlsBtn.onclick = function() {
+        if (window.exportAllToExcel) return window.exportAllToExcel();
+        var s = document.createElement('script');
+        s.src = '/export-xlsx.js';
+        s.onload = function() { window.exportAllToExcel(); };
+        s.onerror = function() { alert('Не удалось загрузить модуль выгрузки.'); };
+        document.head.appendChild(s);
+      };
+
       var logoutBtn = document.createElement('button');
       logoutBtn.id = 'logout-btn';
       logoutBtn.style.cssText = 'width:100%;display:flex;align-items:center;gap:12px;padding:10px 20px;font-size:14px;font-weight:500;color:#94a3b8;background:transparent;border:none;cursor:pointer;font-family:inherit;text-align:left;';
@@ -200,6 +215,7 @@ window.odnForApt = function(baseOdn, month, year) {
       nav.appendChild(importBtn);
       nav.appendChild(gasBtn);
       nav.appendChild(odnBtn);
+      nav.appendChild(xlsBtn);
       nav.appendChild(logoutBtn);
     });
 

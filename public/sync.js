@@ -150,7 +150,7 @@ window.odnForApt = function(baseOdn, month, year) {
 
   // Add sidebar buttons
   function addSidebarExtras() {
-    var obs = new MutationObserver(function() {
+    function inject() {
       var sidebar = document.querySelector('.fixed.left-0.top-0.h-full.w-56');
       if (!sidebar || document.getElementById('logout-btn')) return;
       var nav = sidebar.querySelector('nav');
@@ -185,6 +185,14 @@ window.odnForApt = function(baseOdn, month, year) {
       odnBtn.onmouseout = function() { odnBtn.style.color = '#94a3b8'; odnBtn.style.background = 'transparent'; };
       odnBtn.onclick = openOdnPeriodsModal;
 
+      var fixBtn = document.createElement('button');
+      fixBtn.id = 'period-fix-btn';
+      fixBtn.style.cssText = 'width:100%;display:flex;align-items:center;gap:12px;padding:10px 20px;font-size:14px;font-weight:500;color:#94a3b8;background:transparent;border:none;cursor:pointer;font-family:inherit;text-align:left;';
+      fixBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M9 16h6M13 14l2 2-2 2"/></svg> Исправить период';
+      fixBtn.onmouseover = function() { fixBtn.style.color = '#fff'; fixBtn.style.background = '#1e293b'; };
+      fixBtn.onmouseout = function() { fixBtn.style.color = '#94a3b8'; fixBtn.style.background = 'transparent'; };
+      fixBtn.onclick = openPeriodFixModal;
+
       var xlsBtn = document.createElement('button');
       xlsBtn.id = 'export-xlsx-btn';
       xlsBtn.style.cssText = 'width:100%;display:flex;align-items:center;gap:12px;padding:10px 20px;font-size:14px;font-weight:500;color:#94a3b8;background:transparent;border:none;cursor:pointer;font-family:inherit;text-align:left;';
@@ -215,10 +223,15 @@ window.odnForApt = function(baseOdn, month, year) {
       nav.appendChild(importBtn);
       nav.appendChild(gasBtn);
       nav.appendChild(odnBtn);
+      nav.appendChild(fixBtn);
       nav.appendChild(xlsBtn);
       nav.appendChild(logoutBtn);
-    });
+    }
 
+    // Run now (the sidebar is usually rendered already) and again whenever
+    // React re-renders it.
+    inject();
+    var obs = new MutationObserver(inject);
     var root = document.getElementById('root');
     if (root) obs.observe(root, { childList: true, subtree: true });
   }
@@ -403,6 +416,140 @@ window.odnForApt = function(baseOdn, month, year) {
     };
   }
   window.openOdnPeriodsModal = openOdnPeriodsModal;
+
+  // Modal to fix data entered into the wrong month: move or delete meter
+  // readings (apartments and common meters) and the ОДН entry of a period.
+  function openPeriodFixModal() {
+    if (document.getElementById('period-fix-overlay')) return;
+    var MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+      'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+    function load(key, def) {
+      try { var v = JSON.parse(localStorage.getItem(key) || 'null'); return v == null ? def : v; } catch (e) { return def; }
+    }
+    var now = new Date();
+    var srcM = now.getMonth() + 1, srcY = now.getFullYear();
+    var dstM = srcM > 1 ? srcM - 1 : 12, dstY = srcM > 1 ? srcY : srcY - 1;
+
+    function monthSelect(id, sel) {
+      var h = '<select id="' + id + '" style="flex:1;padding:9px 10px;border:1px solid #e2e8f0;border-radius:10px;font-size:14px;background:#fff">';
+      for (var i = 1; i <= 12; i++) h += '<option value="' + i + '"' + (i === sel ? ' selected' : '') + '>' + MONTHS[i - 1] + '</option>';
+      return h + '</select>';
+    }
+    function yearInput(id, val) {
+      return '<input id="' + id + '" type="number" value="' + val + '" style="width:90px;padding:9px 10px;border:1px solid #e2e8f0;border-radius:10px;font-size:14px">';
+    }
+    function check(id, label) {
+      return '<label style="display:flex;align-items:center;gap:8px;font-size:14px;color:#334155;cursor:pointer"><input type="checkbox" id="' + id + '" checked style="width:16px;height:16px"> ' + label + ' <span id="' + id + '-cnt" style="color:#64748b;font-size:12px"></span></label>';
+    }
+    var lbl = 'display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px';
+    var btn = 'padding:9px 14px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;';
+
+    var overlay = document.createElement('div');
+    overlay.id = 'period-fix-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;padding:16px;';
+    var box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:16px;max-width:480px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);';
+    box.innerHTML =
+      '<div style="padding:20px 22px;border-bottom:1px solid #f1f5f9">' +
+        '<div style="font-size:17px;font-weight:700;color:#0f172a">Исправить период</div>' +
+        '<div style="font-size:13px;color:#64748b;margin-top:6px;line-height:1.5">Если данные внесли не в тот месяц: перенесите их в нужный месяц или удалите, чтобы внести заново. Оплаты не затрагиваются.</div>' +
+      '</div>' +
+      '<div style="padding:16px 22px;display:flex;flex-direction:column;gap:14px">' +
+        '<div><span style="' + lbl + '">Из какого месяца (где сейчас ошибочно)</span><div style="display:flex;gap:8px">' + monthSelect('pf-src-m', srcM) + yearInput('pf-src-y', srcY) + '</div></div>' +
+        '<div><span style="' + lbl + '">В какой месяц (куда должно быть)</span><div style="display:flex;gap:8px">' + monthSelect('pf-dst-m', dstM) + yearInput('pf-dst-y', dstY) + '</div></div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px">' +
+          check('pf-meters', 'Показания квартир') + check('pf-common', 'Общедомовые счётчики') + check('pf-odn', 'ОДН за период') +
+        '</div>' +
+        '<div id="pf-warn" style="font-size:12px;color:#b45309;line-height:1.5"></div>' +
+      '</div>' +
+      '<div style="padding:6px 22px 20px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">' +
+        '<button id="pf-cancel" style="' + btn + 'border:1px solid #e2e8f0;background:#fff;color:#475569">Отмена</button>' +
+        '<button id="pf-delete" style="' + btn + 'border:1px solid #fecaca;background:#fff;color:#dc2626">Удалить из исходного</button>' +
+        '<button id="pf-move" style="' + btn + 'border:none;background:#0f172a;color:#fff">Перенести</button>' +
+      '</div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    function $(id) { return document.getElementById(id); }
+    function p(prefix) { return { m: parseInt($(prefix + '-m').value, 10), y: parseInt($(prefix + '-y').value, 10) }; }
+    function inP(r, per) { return Number(r.month) === per.m && Number(r.year) === per.y; }
+    function name(per) { return MONTHS[per.m - 1] + ' ' + per.y; }
+
+    function refresh() {
+      var s = p('pf-src'), d = p('pf-dst');
+      var meters = load('zhk-meters', []), common = load('zhk-common-meters', []), odn = load('zhk-odn-periods', {});
+      var ms = meters.filter(function(r) { return inP(r, s); }).length, md = meters.filter(function(r) { return inP(r, d); }).length;
+      var cs = common.filter(function(r) { return inP(r, s); }).length, cd = common.filter(function(r) { return inP(r, d); }).length;
+      var os = odn[s.y + '-' + s.m] != null, od = odn[d.y + '-' + d.m] != null;
+      $('pf-meters-cnt').textContent = '(в исходном: ' + ms + ', в целевом: ' + md + ')';
+      $('pf-common-cnt').textContent = '(в исходном: ' + cs + ', в целевом: ' + cd + ')';
+      $('pf-odn-cnt').textContent = '(в исходном: ' + (os ? 'есть' : 'нет') + ', в целевом: ' + (od ? 'есть' : 'нет') + ')';
+      var w = [];
+      if (s.m === d.m && s.y === d.y) w.push('Исходный и целевой месяц совпадают.');
+      if (md || cd || od) w.push('В «' + name(d) + '» уже есть данные — при переносе записи тех же квартир/счётчиков будут заменены.');
+      $('pf-warn').textContent = w.join(' ');
+    }
+    ['pf-src-m', 'pf-src-y', 'pf-dst-m', 'pf-dst-y'].forEach(function(id) { $(id).onchange = refresh; $(id).oninput = refresh; });
+    refresh();
+
+    function close() { overlay.remove(); }
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
+    $('pf-cancel').onclick = close;
+
+    function save(changes, button) {
+      Object.keys(changes).forEach(function(k) { localStorage.setItem(k, JSON.stringify(changes[k])); });
+      button.textContent = '...';
+      $('pf-move').disabled = $('pf-delete').disabled = true;
+      fetch('/api/data', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: changes }),
+      }).catch(function() {}).then(function() { window.location.reload(); });
+    }
+
+    function run(move) {
+      var s = p('pf-src'), d = p('pf-dst');
+      if (move && s.m === d.m && s.y === d.y) { alert('Выберите другой целевой месяц.'); return; }
+      var doM = $('pf-meters').checked, doC = $('pf-common').checked, doO = $('pf-odn').checked;
+      if (!doM && !doC && !doO) { alert('Отметьте, что исправлять.'); return; }
+      var changes = {}, summary = [];
+
+      function fix(key, idField, label) {
+        var arr = load(key, []);
+        var src = arr.filter(function(r) { return inP(r, s); });
+        if (!src.length) return;
+        var rest = arr.filter(function(r) { return !inP(r, s); });
+        if (move) {
+          var ids = {};
+          src.forEach(function(r) { ids[r[idField]] = true; });
+          rest = rest.filter(function(r) { return !(inP(r, d) && ids[r[idField]]); });
+          src.forEach(function(r) { var c = Object.assign({}, r); c.month = d.m; c.year = d.y; rest.push(c); });
+        }
+        changes[key] = rest;
+        summary.push(label + ': ' + src.length);
+      }
+      if (doM) fix('zhk-meters', 'apartmentId', 'показания квартир');
+      if (doC) fix('zhk-common-meters', 'meterId', 'общедомовые счётчики');
+      if (doO) {
+        var odn = load('zhk-odn-periods', {}), sk = s.y + '-' + s.m, dk = d.y + '-' + d.m;
+        if (odn[sk] != null) {
+          if (move) odn[dk] = odn[sk];
+          delete odn[sk];
+          changes['zhk-odn-periods'] = odn;
+          summary.push('ОДН');
+        }
+      }
+      if (!summary.length) { alert('В «' + name(s) + '» нет выбранных данных.'); return; }
+      var q = move
+        ? 'Перенести из «' + name(s) + '» в «' + name(d) + '»:\n' + summary.join('\n') + '\n\nВ «' + name(s) + '» эти данные удалятся.'
+        : 'Удалить из «' + name(s) + '»:\n' + summary.join('\n') + '\n\nОтменить будет нельзя.';
+      if (!confirm(q)) return;
+      save(changes, move ? $('pf-move') : $('pf-delete'));
+    }
+    $('pf-move').onclick = function() { run(true); };
+    $('pf-delete').onclick = function() { run(false); };
+  }
+  window.openPeriodFixModal = openPeriodFixModal;
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() { setTimeout(addSidebarExtras, 1000); });
